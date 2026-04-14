@@ -46,9 +46,7 @@ class NoiseModel(ABC):
 
 
 class NoNoiseModel(NoiseModel):
-    """
-    Pass-through noise model -returns sensor readings unchanged.
-    """
+    """Pass-through noise model - returns sensor readings unchanged."""
 
     def __init__(self) -> None:
         super().__init__(enabled=False)
@@ -57,3 +55,33 @@ class NoNoiseModel(NoiseModel):
         self, static_pressure: float, total_pressure: float
     ) -> tuple[float, float]:
         return static_pressure, total_pressure
+
+
+# To register a new model add one line here:
+#   NOISE_REGISTRY["my_model"] = MyNoiseModel
+
+NOISE_REGISTRY: dict[str, type[NoiseModel]] = {
+    "none": NoNoiseModel,
+}
+
+
+def create_noise_model(noise_type: str, **params) -> NoiseModel:
+    """
+    Instantiate a noise model by name using the registry.
+
+    Args:
+        noise_type: Key from NOISE_REGISTRY (e.g. "none", "binczar").
+        **params:   Forwarded as keyword arguments to the model constructor.
+
+    Raises:
+        ValueError: If noise_type is not in NOISE_REGISTRY.
+    """
+    cls = NOISE_REGISTRY.get(noise_type.lower())
+    if cls is None:
+        available = list(NOISE_REGISTRY.keys())
+        raise ValueError(
+            f"Unknown noise type '{noise_type}'. Available: {available}"
+        )
+    if noise_type.lower() == "none":
+        return NoNoiseModel()
+    return cls(**params)

@@ -20,7 +20,7 @@ from src.api.schemas import (
     SimulationResponse,
 )
 from src.models.physics import ModelParams
-from src.noise.noise_model import NoNoiseModel
+from src.noise.noise_model import NoiseModel, create_noise_model
 from src.simulation.engine import SimulationEngine
 from src.simulation.flight_profile import FlightProfile
 from src.simulation.result import SimulationResult  # noqa: F401 – used in type hint below
@@ -65,8 +65,12 @@ def _build_params(request: SimulationRequest) -> ModelParams:
     )
 
 
-def _build_noise(_request: SimulationRequest) -> NoNoiseModel:
-    return NoNoiseModel()
+def _build_noise(request: SimulationRequest) -> NoiseModel:
+    nc = request.noise_config
+    try:
+        return create_noise_model(nc.noise_type, **nc.params)
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
 
 
 def _run(request: SimulationRequest) -> SimulationResult:

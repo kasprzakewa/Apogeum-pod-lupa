@@ -27,11 +27,27 @@ class ModelParamsSchema(BaseModel):
 
 
 class NoiseConfigSchema(BaseModel):
-    """Noise model configuration. Currently only the no-noise model is available."""
+    """
+    Noise model configuration.
 
-    enabled: bool = Field(
-        False,
-        description="Enable noise simulation. Currently a placeholder – no noise is applied regardless.",
+    `noise_type` must match a key in NOISE_REGISTRY (default: "none").
+    `params` is forwarded as keyword arguments to the model constructor,
+    so adding a new noise model to the registry requires no schema changes.
+    """
+
+    noise_type: str = Field(
+        "none",
+        description=(
+            "Name of the noise model to use. Must be registered in NOISE_REGISTRY. "
+            "Currently available: 'none'."
+        ),
+    )
+    params: dict = Field(
+        default_factory=dict,
+        description=(
+            "Constructor keyword arguments forwarded to the noise model. "
+            "E.g. for a GaussianNoiseModel: {\"sigma_static\": 10.0, \"sigma_total\": 15.0}."
+        ),
     )
 
 
