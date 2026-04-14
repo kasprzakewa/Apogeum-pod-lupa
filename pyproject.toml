@@ -1,0 +1,30 @@
+[tool.poetry]
+name = "apogeum-pod-lupa"
+version = "0.1.0"
+description = "Software-in-the-loop simulation for student rocket apogee prediction"
+authors = []
+license = "Apache-2.0"
+readme = "README.md"
+packages = [{include = "src"}]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+numpy = "*"
+matplotlib = "*"
+plotly = "*"
+fastapi = "*"
+uvicorn = {extras = ["standard"], version = "*"}
+pydantic = "*"
+pandas = "*"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "*"
+httpx = "*"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
