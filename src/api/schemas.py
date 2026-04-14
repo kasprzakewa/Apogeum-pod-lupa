@@ -100,6 +100,23 @@ class SimulationMetadata(BaseModel):
     noise_type: str
 
 
+class ChannelDeviation(BaseModel):
+    """Deviation statistics for a single output channel."""
+
+    max: float = Field(description="Maximum absolute deviation [channel unit]")
+    mean: float = Field(description="Mean absolute deviation [channel unit]")
+
+
+class DeviationStats(BaseModel):
+    """Per-channel deviation between clean and noisy simulation runs."""
+
+    altitude: ChannelDeviation
+    speed: ChannelDeviation
+    static_pressure: ChannelDeviation
+    dynamic_pressure: ChannelDeviation
+    predicted_apogee: ChannelDeviation
+
+
 class SimulationResponse(BaseModel):
     """Full response from POST /simulate."""
 
@@ -111,6 +128,11 @@ class SimulationResponse(BaseModel):
     speed: list[float]
     predicted_apogee: list[float]
     metadata: SimulationMetadata
+    deviations: DeviationStats | None = Field(
+        None,
+        description="Max and mean absolute deviation per channel vs. clean run. "
+                    "Null when noise_type is 'none'.",
+    )
 
 
 class HealthResponse(BaseModel):

@@ -9,11 +9,14 @@ import io
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import numpy as np
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 
 from src.api.schemas import (
+    ChannelDeviation,
+    DeviationStats,
     HealthResponse,
     PlotRequest,
     SimulationRequest,
@@ -102,6 +105,19 @@ def run_simulation(request: SimulationRequest) -> SimulationResponse:
     data = result.to_dict()
     meta = data["metadata"]
 
+    deviations = None
+    if result.noise_enabled:
+        clean_req = request.model_copy(
+            update={"noise_config": request.noise_config.model_copy(
+                update={"noise_type": "none", "params": {}}
+            )}
+        )
+        clean_result = _run(clean_req)
+        dev = clean_result.deviation_from(result)
+        deviations = DeviationStats(
+            **{ch: ChannelDeviation(**vals) for ch, vals in dev.items()}
+        )
+
     return SimulationResponse(
         time=data["time"],
         static_pressure=data["static_pressure"],
@@ -111,6 +127,7 @@ def run_simulation(request: SimulationRequest) -> SimulationResponse:
         speed=data["speed"],
         predicted_apogee=data["predicted_apogee"],
         metadata=meta,
+        deviations=deviations,
     )
 
 

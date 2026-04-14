@@ -48,6 +48,30 @@ class SimulationResult:
     def final_apogee_prediction(self) -> float:
         return float(self.predicted_apogee[-1]) if self.n_steps > 0 else 0.0
 
+    def deviation_from(self, other: "SimulationResult") -> dict[str, dict[str, float]]:
+        """
+        Compute max and mean absolute deviation between this result and another.
+
+        Typical usage: clean.deviation_from(noisy)
+
+        Returns:
+            Dict keyed by channel name, each value a dict with "max" and "mean".
+        """
+        channels = {
+            "altitude":         (self.altitude,         other.altitude),
+            "speed":            (self.speed,             other.speed),
+            "static_pressure":  (self.static_pressure,  other.static_pressure),
+            "dynamic_pressure": (self.dynamic_pressure, other.dynamic_pressure),
+            "predicted_apogee": (self.predicted_apogee, other.predicted_apogee),
+        }
+        return {
+            name: {
+                "max":  float(np.max(np.abs(a - b))),
+                "mean": float(np.mean(np.abs(a - b))),
+            }
+            for name, (a, b) in channels.items()
+        }
+
     def to_dict(self) -> dict:
         return {
             "time": self.time.tolist(),

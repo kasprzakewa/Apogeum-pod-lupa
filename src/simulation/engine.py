@@ -55,6 +55,10 @@ class SimulationEngine:
         n = self.profile.n_steps
         profile = self.profile
 
+        # Synchronize dt-dependent parameters (e.g. lag filters) with the profile
+        if self.noise_model is not None:
+            self.noise_model.configure(profile.dt)
+
         static_pressure = np.empty(n, dtype=np.float64)
         total_pressure = np.empty(n, dtype=np.float64)
         dynamic_pressure = np.empty(n, dtype=np.float64)
