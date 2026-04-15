@@ -100,15 +100,37 @@ def plot_simulation(
     fig, axes = plt.subplots(2, 2, figsize=figsize)
     fig.suptitle(title, fontsize=14, fontweight="bold")
 
-    t_clean = result.time
-    t_noisy = noisy_result.time if noisy_result else None
+    t_burnout, t_apogee = _detect_events(result)
+
+    # Trim all arrays to [0, t_apogee]
+    apogee_idx = int(np.argmax(result.altitude))
+
+    def _trim(r: SimulationResult) -> tuple[np.ndarray, SimulationResult]:
+        idx = np.searchsorted(r.time, t_apogee, side="right")
+        trimmed = SimulationResult(
+            time=r.time[:idx],
+            altitude=r.altitude[:idx],
+            speed=r.speed[:idx],
+            static_pressure=r.static_pressure[:idx],
+            dynamic_pressure=r.dynamic_pressure[:idx],
+            total_pressure=r.total_pressure[:idx],
+            predicted_apogee=r.predicted_apogee[:idx],
+            dt=r.dt,
+            noise_enabled=r.noise_enabled,
+            noise_type=r.noise_type,
+        )
+        return trimmed.time, trimmed
+
+    t_clean, result = _trim(result)
     has_noise = noisy_result is not None
+    if has_noise:
+        t_noisy, noisy_result = _trim(noisy_result)
+    else:
+        t_noisy = None
 
     dev: dict[str, dict[str, float]] = (
         result.deviation_from(noisy_result) if has_noise else {}
     )
-
-    t_burnout, t_apogee = _detect_events(result)
 
     def _badge(ax: plt.Axes, channel: str, unit: str) -> None:
         """Annotate an axes with max and mean deviation for one channel."""
