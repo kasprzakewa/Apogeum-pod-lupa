@@ -36,7 +36,7 @@ class NoiseConfigSchema(BaseModel):
     """
 
     noise_type: str = Field(
-        "none",
+        "binczar",
         description=(
             "Name of the noise model to use. Must be registered in NOISE_REGISTRY. "
             "Currently available: 'none'."

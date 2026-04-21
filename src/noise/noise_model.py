@@ -167,9 +167,40 @@ class BinczarNoiseModel(NoiseModel):
         return p_s_final, p_s_final + p_d_final
         
 
+class GaussianNoiseModel(NoiseModel):
+    """
+    Simple Gaussian noise model for Monte Carlo simulations.
+    
+    Adds independent Gaussian noise to static and total pressure readings.
+    
+    Args:
+        sigma_static: Standard deviation of noise on static pressure [Pa].
+        sigma_total:  Standard deviation of noise on total pressure [Pa].
+        seed:         RNG seed for reproducibility.
+    """
+    
+    def __init__(
+        self, 
+        sigma_static: float, 
+        sigma_total: float, 
+        seed: int | None = None
+    ) -> None:
+        super().__init__(enabled=True, seed=seed)
+        self.sigma_static = sigma_static
+        self.sigma_total = sigma_total
+    
+    def apply(
+        self, static_pressure: float, total_pressure: float
+    ) -> tuple[float, float]:
+        noise_static = self._rng.normal(0.0, self.sigma_static)
+        noise_total = self._rng.normal(0.0, self.sigma_total)
+        return static_pressure + noise_static, total_pressure + noise_total
+
+
 NOISE_REGISTRY: dict[str, type[NoiseModel]] = {
     "none":   NoNoiseModel,
     "binczar": BinczarNoiseModel,
+    "gaussian": GaussianNoiseModel,
 }
 
 

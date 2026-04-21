@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 
 from src.models.constants import REFERENCE_PRESSURE, SCALE_HEIGHT, BARO_EXPONENT
 
@@ -42,6 +41,7 @@ class FlightProfile:
         Returns:
             FlightProfile instance.
         """
+        import pandas as pd
         df = pd.read_csv(path)
         df.columns = [c.strip().lower() for c in df.columns]
 

@@ -22,6 +22,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Callable
+import concurrent.futures
+import concurrent.futures
 
 import numpy as np
 
@@ -119,18 +121,28 @@ class MonteCarloRunner:
 
     def run(self) -> MCResult:
         """
-        Execute all Monte Carlo runs sequentially and collect results.
+        Execute all Monte Carlo runs in parallel and collect results.
 
         Returns:
             MCResult with aggregated apogee predictions.
-
-        Raises:
-            NotImplementedError: Until implemented.
         """
-        raise NotImplementedError(
-            "MonteCarloRunner.run() is not yet implemented. "
-            "Implement sequential or parallel execution of self.simulation_factory(seed) "
-            "for seed in range(self.config.base_seed, self.config.base_seed + self.config.n_runs), "
-            "collect result.final_apogee_prediction from each run, "
-            "and return MCResult(apogee_predictions=..., config=self.config)."
+        def run_single_simulation(seed: int) -> float:
+            """Run a single simulation with the given seed and return final apogee prediction."""
+            engine = self.simulation_factory(seed)
+            result = engine.run()
+            return result.final_apogee_prediction
+
+        # Generate seeds for each run
+        seeds = range(self.config.base_seed, self.config.base_seed + self.config.n_runs)
+        
+        # Run simulations in parallel
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            apogee_predictions = list(executor.map(run_single_simulation, seeds))
+        
+        # Convert to numpy array
+        apogee_predictions_array = np.array(apogee_predictions, dtype=np.float64)
+        
+        return MCResult(
+            apogee_predictions=apogee_predictions_array,
+            config=self.config
         )
