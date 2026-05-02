@@ -1,3 +1,6 @@
-from src.filters.ekf import ExtendedKalmanFilter
+"""State-estimation and signal filters for sensor data."""
 
-__all__ = ["ExtendedKalmanFilter"]
+from src.filters.kalman import KalmanFilter
+from src.filters.pressure_filter import PressureEMAFilter
+
+__all__: list[str] = ["KalmanFilter", "PressureEMAFilter"]

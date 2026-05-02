@@ -140,12 +140,9 @@ class BinczarNoiseModel(NoiseModel):
     def apply(
         self, static_pressure: float, total_pressure: float
     ) -> tuple[float, float]:
-        """
-        Apply the full sensor error chain to one time-step.
-        """
         p_dyn_true = total_pressure - static_pressure
 
-        # 1. Pneumatic lag (first-order EMA, alpha pre-computed in configure())
+        # Pneumatic lag (first-order EMA, alpha pre-computed in configure())
         if self._last_p_stat is None:
             self._last_p_stat = static_pressure
             self._last_p_dyn  = p_dyn_true
@@ -154,41 +151,41 @@ class BinczarNoiseModel(NoiseModel):
         p_d_lag = self._last_p_dyn  + self._alpha * (p_dyn_true      - self._last_p_dyn)
         self._last_p_stat, self._last_p_dyn = p_s_lag, p_d_lag
 
-        # 2. White noise + vibration + temperature drift
+        # White noise + vibration + temperature drift
         n_s       = self._rng.normal(0.0, self.rms_static)  + self.accel_g * self.vib_sens * 0.5
         n_d       = self._rng.normal(0.0, self.rms_dynamic) + self.accel_g * self.vib_sens
         p_s_noisy = p_s_lag + n_s + (self.temp_c - 20.0) * self.temp_coeff
         p_d_noisy = p_d_lag + n_d
 
-        # 3. ADC quantization
+        # ADC quantization
         p_s_final = np.round(p_s_noisy / self.res) * self.res
         p_d_final = np.round(p_d_noisy / self.res) * self.res
 
         return p_s_final, p_s_final + p_d_final
-        
+
 
 class GaussianNoiseModel(NoiseModel):
     """
     Simple Gaussian noise model for Monte Carlo simulations.
-    
+
     Adds independent Gaussian noise to static and total pressure readings.
-    
+
     Args:
         sigma_static: Standard deviation of noise on static pressure [Pa].
         sigma_total:  Standard deviation of noise on total pressure [Pa].
         seed:         RNG seed for reproducibility.
     """
-    
+
     def __init__(
-        self, 
-        sigma_static: float, 
-        sigma_total: float, 
-        seed: int | None = None
+        self,
+        sigma_static: float,
+        sigma_total: float,
+        seed: int | None = None,
     ) -> None:
         super().__init__(enabled=True, seed=seed)
         self.sigma_static = sigma_static
         self.sigma_total = sigma_total
-    
+
     def apply(
         self, static_pressure: float, total_pressure: float
     ) -> tuple[float, float]:
@@ -198,7 +195,7 @@ class GaussianNoiseModel(NoiseModel):
 
 
 NOISE_REGISTRY: dict[str, type[NoiseModel]] = {
-    "none":   NoNoiseModel,
+    "none": NoNoiseModel,
     "binczar": BinczarNoiseModel,
     "gaussian": GaussianNoiseModel,
 }

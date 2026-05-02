@@ -1,0 +1,19 @@
+{
+  "simulation": {
+    "csv_path": "data/or_flight.csv",
+    "model_params": {
+      "reference_pressure": 101325.0,
+      "reference_air_density": 1.225,
+      "g": 9.81,
+      "cross_section": 0.00816714,
+      "drag_coefficient": 0.6625,
+      "mass": 19.453
+    },
+    "noise_config": {
+      "noise_type": "none",
+      "params": {}
+    }
+  },
+  "n_runs": 100,
+  "base_seed": 42
+}

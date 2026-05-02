@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -7,6 +9,18 @@ import numpy as np
 class SimulationResult:
     """
     Holds the complete output of one simulation run.
+
+    Two optional filtered output families are available:
+
+    **State-space Kalman filter** (``filter_enabled = True``)
+        ``altitude_filtered``, ``speed_filtered``, ``predicted_apogee_filtered``
+
+    **Pressure-domain EMA filter** (``pressure_filter_enabled = True``)
+        ``altitude_pf``, ``speed_pf``, ``predicted_apogee_pf``
+        — EMA applied to raw (static, dynamic) pressures before the
+          barometric / Bernoulli conversions.
+
+    Both families can be active simultaneously.
     """
 
     time: np.ndarray = field(default_factory=lambda: np.array([], dtype=np.float64))
@@ -23,14 +37,27 @@ class SimulationResult:
 
     altitude: np.ndarray = field(default_factory=lambda: np.array([], dtype=np.float64))
     speed: np.ndarray = field(default_factory=lambda: np.array([], dtype=np.float64))
-
     predicted_apogee: np.ndarray = field(
         default_factory=lambda: np.array([], dtype=np.float64)
     )
 
-    dt: float = 0.01                  # time step [s]
+    # --- State-space KF outputs ---
+    altitude_filtered: np.ndarray | None = None
+    speed_filtered: np.ndarray | None = None
+    predicted_apogee_filtered: np.ndarray | None = None
+
+    # --- Pressure-domain EMA outputs ---
+    altitude_pf: np.ndarray | None = None
+    speed_pf: np.ndarray | None = None
+    predicted_apogee_pf: np.ndarray | None = None
+
+    dt: float = 0.01
     noise_enabled: bool = False
     noise_type: str = "none"
+    filter_enabled: bool = False
+    filter_type: str = "none"
+    pressure_filter_enabled: bool = False
+    pressure_filter_type: str = "none"
 
     @property
     def n_steps(self) -> int:
@@ -47,6 +74,30 @@ class SimulationResult:
     @property
     def final_apogee_prediction(self) -> float:
         return float(self.predicted_apogee[-1]) if self.n_steps > 0 else 0.0
+
+    @property
+    def max_altitude_filtered(self) -> float | None:
+        if self.altitude_filtered is not None and len(self.altitude_filtered) > 0:
+            return float(np.max(self.altitude_filtered))
+        return None
+
+    @property
+    def final_apogee_prediction_filtered(self) -> float | None:
+        if self.predicted_apogee_filtered is not None and len(self.predicted_apogee_filtered) > 0:
+            return float(self.predicted_apogee_filtered[-1])
+        return None
+
+    @property
+    def max_altitude_pf(self) -> float | None:
+        if self.altitude_pf is not None and len(self.altitude_pf) > 0:
+            return float(np.max(self.altitude_pf))
+        return None
+
+    @property
+    def final_apogee_prediction_pf(self) -> float | None:
+        if self.predicted_apogee_pf is not None and len(self.predicted_apogee_pf) > 0:
+            return float(self.predicted_apogee_pf[-1])
+        return None
 
     def deviation_from(self, other: "SimulationResult") -> dict[str, dict[str, float]]:
         """
@@ -73,7 +124,7 @@ class SimulationResult:
         }
 
     def to_dict(self) -> dict:
-        return {
+        data: dict = {
             "time": self.time.tolist(),
             "static_pressure": self.static_pressure.tolist(),
             "total_pressure": self.total_pressure.tolist(),
@@ -89,5 +140,43 @@ class SimulationResult:
                 "final_apogee_prediction": self.final_apogee_prediction,
                 "noise_enabled": self.noise_enabled,
                 "noise_type": self.noise_type,
+                "filter_enabled": self.filter_enabled,
+                "filter_type": self.filter_type,
+                "pressure_filter_enabled": self.pressure_filter_enabled,
+                "pressure_filter_type": self.pressure_filter_type,
             },
         }
+
+        if self.filter_enabled:
+            data["altitude_filtered"] = (
+                self.altitude_filtered.tolist() if self.altitude_filtered is not None else []
+            )
+            data["speed_filtered"] = (
+                self.speed_filtered.tolist() if self.speed_filtered is not None else []
+            )
+            data["predicted_apogee_filtered"] = (
+                self.predicted_apogee_filtered.tolist()
+                if self.predicted_apogee_filtered is not None
+                else []
+            )
+            data["metadata"]["max_altitude_filtered"] = self.max_altitude_filtered
+            data["metadata"]["final_apogee_prediction_filtered"] = (
+                self.final_apogee_prediction_filtered
+            )
+
+        if self.pressure_filter_enabled:
+            data["altitude_pf"] = (
+                self.altitude_pf.tolist() if self.altitude_pf is not None else []
+            )
+            data["speed_pf"] = (
+                self.speed_pf.tolist() if self.speed_pf is not None else []
+            )
+            data["predicted_apogee_pf"] = (
+                self.predicted_apogee_pf.tolist()
+                if self.predicted_apogee_pf is not None
+                else []
+            )
+            data["metadata"]["max_altitude_pf"] = self.max_altitude_pf
+            data["metadata"]["final_apogee_prediction_pf"] = self.final_apogee_prediction_pf
+
+        return data

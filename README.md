@@ -1,49 +1,59 @@
 # Apogeum Pod Lupą
 
-Software-in-the-loop (SIL) simulation environment for student rocket apogee prediction.
+Software-in-the-loop (SIL) simulation environment for student rocket apogee prediction with sensor noise modelling and filter evaluation via Monte Carlo analysis.
 
 ## Overview
 
-The project simulates a 1D vertical rocket flight using static and total pressure sensor readings. It computes:
+The project simulates a 1D vertical rocket flight using static and total pressure sensor readings. At each time step the engine:
 
-- **Altitude** – from static pressure via the barometric formula (ISA model)
-- **Airspeed** – from differential pressure via Bernoulli's equation
-- **Predicted apogee** – from current kinematic state with aerodynamic drag correction
+1. Applies optional sensor noise (pneumatic lag, white noise, vibration, quantisation)
+2. Optionally smooths raw pressures with a **pressure-domain EMA filter** (before barometric conversion)
+3. Computes **altitude** from static pressure via the barometric formula (ISA)
+4. Computes **airspeed** from differential pressure via Bernoulli's equation
+5. Optionally estimates altitude and velocity with a **linear Kalman filter** (state-space)
+6. Predicts **apogee** from the current kinematic state with aerodynamic drag correction
 
-The architecture is designed for future extension with an **Extended Kalman Filter (EKF)** and **Monte Carlo** uncertainty analysis.
+All three channels (raw, EMA-filtered, KF-filtered) are available simultaneously and exposed through the HTTP API.
 
 ## Project Structure
 
 ```
 Apogeum-pod-lupa/
-├── pyproject.toml              # Poetry project and dependency configuration
-├── poetry.lock                 # Locked dependency versions
+├── pyproject.toml
 ├── data/
-│   └── sample_flight.csv       # Example synthetic flight profile (600 steps, dt=0.1 s)
+│   ├── or_smaller_converted.csv   # Converted OpenRocket flight profile (recommended)
+│   └── sample_flight.csv          # Legacy synthetic reference profile
 ├── src/
 │   ├── models/
-│   │   ├── constants.py        # Physical constants (P₀, ρ₀, g, …)
-│   │   └── physics.py          # Core functions: altitude, speed, apogee prediction
+│   │   ├── constants.py           # Physical constants (P0, rho0, g, …)
+│   │   └── physics.py             # altitude, speed, apogee prediction, air density
 │   ├── simulation/
-│   │   ├── flight_profile.py   # FlightProfile – CSV loader and synthetic generator
-│   │   ├── engine.py           # SimulationEngine – discrete-time loop
-│   │   └── result.py           # SimulationResult dataclass
+│   │   ├── flight_profile.py      # FlightProfile – CSV loader and synthetic generator
+│   │   ├── engine.py              # SimulationEngine – discrete-time loop
+│   │   └── result.py              # SimulationResult dataclass
 │   ├── noise/
-│   │   └── noise_model.py      # NoiseModel (abstract base) + NoNoiseModel
+│   │   └── noise_model.py         # NoiseModel ABC + all concrete models
 │   ├── filters/
-│   │   └── ekf.py              # ExtendedKalmanFilter – interface placeholder
-│   ├── monte_carlo/
-│   │   └── runner.py           # MonteCarloRunner – interface placeholder
+│   │   ├── kalman.py              # Linear Kalman filter (altitude, velocity state)
+│   │   └── pressure_filter.py     # Dual-channel EMA filter on raw pressures
 │   ├── visualization/
-│   │   └── plots.py            # Fixed 2×2 matplotlib plot layout
+│   │   ├── plots.py               # 2×2 simulation plot
+│   │   └── mc_prediction_error_plot.py  # Monte Carlo error figure (raw / KF / EMA)
 │   └── api/
-│       ├── main.py             # FastAPI application
-│       ├── routes.py           # Endpoint handlers
-│       └── schemas.py          # Pydantic request/response models
+│       ├── main.py                # FastAPI application
+│       ├── routes.py              # Endpoint handlers
+│       └── schemas.py             # Pydantic request/response models
+├── scripts/
+│   ├── or_csv_to_flight.py        # Convert OpenRocket CSV → (time, p_static, p_total)
+│   ├── tune_kalman.py             # KF parameter grid search with MC evaluation
+│   └── tune_ema.py                # EMA parameter grid search with MC evaluation
+├── results/                       # Output plots from tuning scripts (git-ignored)
 └── tests/
-    ├── test_physics.py         # Unit tests for physics functions
-    ├── test_simulation.py      # Unit tests for engine and flight profile
-    └── test_noise.py           # Unit tests for noise models
+    ├── test_physics.py
+    ├── test_simulation.py
+    ├── test_noise.py
+    ├── test_api_simulate.py
+    └── test_api_prediction_error.py
 ```
 
 ## Requirements
@@ -54,11 +64,7 @@ Apogeum-pod-lupa/
 ## Installation
 
 ```bash
-# Install all dependencies and create virtual environment
 poetry install
-
-# Activate the virtual environment
-poetry shell
 ```
 
 ## Running the API
@@ -67,10 +73,9 @@ poetry shell
 poetry run uvicorn src.api.main:app --reload
 ```
 
-Interactive documentation is available at:
-- **[http://127.0.0.1:8000](http://127.0.0.1:8000)** → redirects to Swagger UI
-- **[http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)** → Swagger UI
-- **[http://127.0.0.1:8000/redoc](http://127.0.0.1:8000/redoc)** → ReDoc
+Interactive documentation:
+- **http://127.0.0.1:8000/docs** — Swagger UI
+- **http://127.0.0.1:8000/redoc** — ReDoc
 
 ## API Endpoints
 
@@ -79,80 +84,122 @@ Interactive documentation is available at:
 | `GET`  | `/api/v1/health` | Health check |
 | `POST` | `/api/v1/simulate` | Run simulation, return JSON time-series |
 | `POST` | `/api/v1/plot` | Run simulation, return PNG plot |
+| `POST` | `/api/v1/monte-carlo/prediction-error` | Monte Carlo prediction-error analysis — JSON or PNG |
 
 ### POST /api/v1/simulate
 
-Run a simulation and get raw time-series data.
+Runs one simulation. Returns all three output channels (raw, EMA-filtered, KF-filtered) depending on which filters are enabled.
 
 ```bash
-curl -X POST http://127.0.0.1:8000/api/v1/simulate \
+# Synthetic profile, Binczar noise, EMA pressure filter enabled
+curl -s -X POST http://127.0.0.1:8000/api/v1/simulate \
   -H "Content-Type: application/json" \
   -d '{
-    "synthetic_profile": {
-      "duration": 60.0,
-      "dt": 0.1,
-      "max_altitude": 3000.0,
-      "max_speed": 300.0,
-      "burnout_time": 5.0
-    }
+    "noise_config": {"noise_type": "binczar", "params": {}},
+    "pressure_filter_config": {"enabled": true, "tau_static": 0.03, "tau_dynamic": 0.02},
+    "synthetic_profile": {"duration": 60.0, "dt": 0.1, "max_altitude": 3000.0,
+                          "max_speed": 300.0, "burnout_time": 5.0}
   }'
 ```
 
-Using a CSV file instead of the synthetic profile:
+```bash
+# OpenRocket CSV profile, no noise, no filter
+curl -s -X POST http://127.0.0.1:8000/api/v1/simulate \
+  -H "Content-Type: application/json" \
+  -d '{"csv_path": "data/or_smaller_converted.csv"}'
+```
+
+### POST /api/v1/monte-carlo/prediction-error
+
+Runs `n_runs` noisy simulations and compares `predicted_apogee` to a clean noise-free reference at every time step. Returns per-step statistics (mean, std, P05, P95) and scalar MAE/RMSE metrics, split into full-flight and post-burnout windows.
+
+Set `response_format` to `"png"` to get the figure directly instead of JSON.
+
+**Example — EMA filter with Binczar noise, PNG output:**
 
 ```bash
-curl -X POST http://127.0.0.1:8000/api/v1/simulate \
+curl -s -X POST http://127.0.0.1:8000/api/v1/monte-carlo/prediction-error \
   -H "Content-Type: application/json" \
-  -d '{"csv_path": "data/sample_flight.csv"}'
+  -d '{
+    "base_seed": 42,
+    "n_runs": 50,
+    "response_format": "png",
+    "scatter_max_points": 50000,
+    "include_all_runs": true,
+    "figure_title": "MC: EMA filter vs raw",
+    "simulation": {
+      "csv_path": "data/or_smaller_converted.csv",
+      "noise_config": {"noise_type": "binczar", "params": {}},
+      "pressure_filter_config": {"enabled": true, "tau_static": 0.03, "tau_dynamic": 0.02}
+    }
+  }' --output results/mc_ema.png
 ```
 
-### POST /api/v1/plot
-
-Run a simulation and return a **PNG image** with a fixed 2×2 panel layout:
-
-```
-┌─────────────────────────────┬──────────────────────┐
-│  Altitude + Predicted Apogee │        Speed         │
-├─────────────────────────────┼──────────────────────┤
-│      Static Pressure        │   Dynamic Pressure   │
-└─────────────────────────────┴──────────────────────┘
-```
+**Example — Kalman filter enabled alongside EMA:**
 
 ```bash
-# Basic plot (ideal simulation)
-curl -X POST http://127.0.0.1:8000/api/v1/plot \
+curl -s -X POST http://127.0.0.1:8000/api/v1/monte-carlo/prediction-error \
   -H "Content-Type: application/json" \
-  -d '{"title": "Rocket SIL Simulation"}' \
-  --output plot.png
+  -d '{
+    "base_seed": 42,
+    "n_runs": 50,
+    "response_format": "png",
+    "include_all_runs": true,
+    "simulation": {
+      "csv_path": "data/or_smaller_converted.csv",
+      "noise_config": {"noise_type": "binczar", "params": {}},
+      "filter_config": {"enabled": true, "sigma_a": 30, "sigma_h": 20, "sigma_v": 30},
+      "pressure_filter_config": {"enabled": true, "tau_static": 0.03, "tau_dynamic": 0.02}
+    }
+  }' --output results/mc_kf_ema.png
 ```
 
 ## Running Tests
 
 ```bash
 poetry run pytest
-
-# With verbose output
 poetry run pytest -v
 ```
 
-## Using the Python API Directly
+## Tuning Scripts
 
-```python
-from src.simulation import FlightProfile, SimulationEngine
-from src.visualization import plot_simulation
+### KF parameter grid search
 
-# Create flight profile (synthetic or from CSV)
-profile = FlightProfile.synthetic(duration=60.0, max_altitude=3000.0)
-# profile = FlightProfile.from_csv("data/sample_flight.csv")
-
-# Run simulation
-result = SimulationEngine(profile).run()
-
-# Plot – fixed 2×2 layout
-fig = plot_simulation(result, title="Rocket SIL Simulation")
-fig.savefig("simulation.png", dpi=150)
-fig.show()
+```bash
+poetry run python3 scripts/tune_kalman.py \
+    --csv data/or_smaller_converted.csv \
+    --n-mc 20 \
+    --sigma-a 5 15 45 120 \
+    --sigma-h 5 15 45 120 \
+    --sigma-v 2 7 20 60 \
+    --output results/kf_tune
 ```
+
+Produces `results/kf_tune_heatmaps.png`, `_ranking.png`, `_timeseries.png`.
+
+### EMA parameter grid search
+
+```bash
+poetry run python3 scripts/tune_ema.py \
+    --csv data/or_smaller_converted.csv \
+    --n-mc 20 \
+    --tau-static 0.01 0.05 0.15 0.5 \
+    --tau-dynamic 0.005 0.02 0.08 0.3 \
+    --output results/ema_tune
+```
+
+Produces `results/ema_tune_heatmap.png`, `_ranking.png`, `_timeseries.png`.
+
+### OpenRocket CSV conversion
+
+```bash
+poetry run python3 scripts/or_csv_to_flight.py \
+    data/openrocket_export.csv \
+    --output data/or_smaller_converted.csv \
+    --method isentropic
+```
+
+Converts an OpenRocket CSV (columns: time, altitude, vertical velocity, Mach, air pressure) to the `(time, static_pressure, total_pressure)` format required by the simulation engine.
 
 ## Physical Model
 
@@ -165,23 +212,22 @@ h = 44300 · (1 − (p / p₀)^0.190263)
 ### Airspeed (Bernoulli)
 
 ```
-ρ(h) = ρ₀ · (1 − h / 44300)^4.256
-
-v = sqrt(2 · Δp / ρ(h))
+rho(h) = rho0 · (1 − h / 44300)^4.256
+v = sqrt(2 · dp / rho(h))
 ```
 
-### Apogee prediction
+### Apogee prediction (with drag)
 
 ```
-Fd = q · A · C_D          (aerodynamic drag force)
+Fd = q · A · C_D
 
 if Fd > 0:
-    h_apogee = h + (m · v² · ln(1 + Fd / (m·g))) / (2 · Fd)
+    h_apogee = h + (m · v² · ln(1 + Fd / (m·g))) / (2·Fd)
 else:
     h_apogee = h + v² / (2·g)
 ```
 
-### Default constants
+### Default model parameters
 
 | Symbol | Value | Description |
 |--------|-------|-------------|
@@ -192,26 +238,25 @@ else:
 | C_D | 0.6 | Drag coefficient |
 | m | 50 kg | Rocket mass |
 
-All parameters are configurable via `ModelParams`.
+All parameters are configurable via `ModelParamsSchema` in the API request.
 
 ## Noise Models
 
-Currently only the pass-through (no-noise) model is implemented.
-Concrete noise models will be added in future iterations.
-
 | Class | Description |
 |-------|-------------|
-| `NoiseModel` | Abstract base class – defines the `apply()` interface |
-| `NoNoiseModel` | Pass-through, ideal sensors (default) |
+| `NoNoiseModel` | Pass-through, ideal sensors |
+| `BinczarNoiseModel` | Realistic model: pneumatic lag, white noise, vibration, temperature drift, ADC quantisation |
+| `IdealGaussianNoiseModel` | Independent Gaussian noise on static and dynamic pressure only |
+| `GaussianNoiseModel` | Independent Gaussian noise on static and total pressure |
 
-## Roadmap
+## Filters
 
-- [ ] Implement concrete noise models
-- [ ] Implement Extended Kalman Filter (`src/filters/ekf.py`)
-- [ ] Implement Monte Carlo runner (`src/monte_carlo/runner.py`)
-- [ ] Add sensitivity analysis (Sobol indices)
-- [ ] Load real flight telemetry from hardware sensors
-- [ ] Add CI/CD pipeline with automated tests
+| Class | Input domain | Notes |
+|-------|-------------|-------|
+| `PressureEMAFilter` | Raw sensor pressures (Pa) | Applied before barometric conversion; lag stays in Pa, not amplified by v² |
+| `KalmanFilter` | Altitude + velocity (m, m/s) | Linear 2-state KF; performs poorly at large dt (>0.1 s) due to v² amplification |
+
+Default EMA parameters (`tau_static=0.03 s`, `tau_dynamic=0.02 s`) were tuned via Monte Carlo grid search on `or_smaller_converted.csv` with `BinczarNoiseModel`, yielding ~11% MAE reduction over raw noisy predictions in the post-burnout window.
 
 ## License
 

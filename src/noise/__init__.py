@@ -1,8 +1,8 @@
 from src.noise.noise_model import (
     NOISE_REGISTRY,
+    BinczarNoiseModel,
     NoiseModel,
     NoNoiseModel,
-    BinczarNoiseModel,
     create_noise_model,
 )
 

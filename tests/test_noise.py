@@ -4,7 +4,11 @@ Unit tests for the noise model module.
 
 import pytest
 
-from src.noise.noise_model import NoiseModel, NoNoiseModel
+from src.noise.noise_model import (
+    NoiseModel,
+    NoNoiseModel,
+    create_noise_model,
+)
 
 
 class TestNoNoiseModel:
